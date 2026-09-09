@@ -46,9 +46,9 @@ button{border:0;background:transparent;color:var(--button);cursor:pointer;font:i
 .legend span{display:flex;align-items:center;gap:5px}
 
 /* modal */
-.overlay{position:fixed;inset:0;background:var(--overlay);display:none;align-items:flex-end;justify-content:center;padding:0}
-.overlay.open{display:flex}
-.modal{background:var(--modal);width:min(100%,560px);border-radius:22px 22px 0 0;padding:20px 18px 28px;box-shadow:0 -8px 30px var(--shadow);max-height:90vh;overflow:auto}
+.overlay{position:absolute;display:none;z-index:50}
+.overlay.open{display:block}
+.modal{position:absolute;background:var(--modal);width:360px;border-radius:16px;padding:20px 18px 28px;box-shadow:0 10px 35px var(--shadow);max-height:80vh;overflow:auto}
 .modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
 .modal-title{font-size:19px;font-weight:650}
 .close{font-size:27px;width:36px;height:36px;border-radius:50%;color:var(--muted)}
@@ -336,15 +336,38 @@ if(rec){[["par","parFloor","parOther"],["impar","imparFloor","imparOther"]].forE
   if(v===5&&rec[otherField])title+=` · ${rec[otherField]}`;
   dot.title=title;status.appendChild(dot)}
 })}
-e.onclick=()=>openDay(key,d,m,y);cal.appendChild(e);
+e.onclick=()=>openDay(key,d,m,y,e);cal.appendChild(e);
 }}
 
-function openDay(key,d,m,y){
+function openDay(key,d,m,y,dayElement){
 if(!currentUser){pendingDay={key,d,m,y};openAuth("login");return;}
 editingKey=key;const rec=data[key]||{};
 temp={par:normalizeStatus(rec.par),impar:normalizeStatus(rec.impar),parFloor:rec.parFloor||"",imparFloor:rec.imparFloor||"",parOther:rec.parOther||"",imparOther:rec.imparOther||""};
 document.getElementById("dateLabel").textContent=`${d} de ${months[m]} de ${y}`;
-buildOptions("parOptions","par");buildOptions("imparOptions","impar");document.getElementById("overlay").classList.add("open");
+buildOptions("parOptions","par");buildOptions("imparOptions","impar");
+
+const overlay=document.getElementById("overlay");
+const modal=overlay.querySelector(".modal");
+const rect=dayElement.getBoundingClientRect();
+
+let left=rect.right + window.scrollX + 8;
+let top=rect.top + window.scrollY;
+
+if(left + 380 > window.innerWidth + window.scrollX){
+  left=rect.left + window.scrollX - 368;
+}
+
+if(top + 500 > window.innerHeight + window.scrollY){
+  top=window.innerHeight + window.scrollY - 520;
+}
+
+overlay.style.left=`${left}px`;
+overlay.style.top=`${top}px`;
+
+modal.style.left="0";
+modal.style.top="0";
+
+overlay.classList.add("open");
 }
 function buildOptions(id,field){
 const box=document.getElementById(id);box.innerHTML="";
