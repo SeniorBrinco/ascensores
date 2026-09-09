@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="es" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Ascensores</title>
+<style>
+*{box-sizing:border-box}
+:root{
+--bg:#fff;--text:#1c2430;--button:#273444;--hover:#f3f5f7;--day-hover:#fafbfc;
+--line:#edf0f2;--muted:#8a929d;--legend:#747d87;--modal:#fff;--card-line:#e7ebee;
+--option-line:#e1e5e8;--option-bg:#fff;--selected-bg:#f3f6f8;--input-bg:#fff;
+--overlay:rgba(20,28,36,.34);--shadow:rgba(0,0,0,.12);--today-bg:#1f2d3d;--today-text:#fff;
+}
+html[data-theme="dark"]{
+--bg:#101419;--text:#e9edf2;--button:#e7edf4;--hover:#20262d;--day-hover:#171c22;
+--line:#252c34;--muted:#8f99a5;--legend:#9aa4ae;--modal:#171c22;--card-line:#2b333c;
+--option-line:#303944;--option-bg:#171c22;--selected-bg:#27313b;--input-bg:#11161b;
+--overlay:rgba(0,0,0,.58);--shadow:rgba(0,0,0,.34);--today-bg:#e7edf4;--today-text:#11161b;
+}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;transition:background .2s,color .2s}
+.app{max-width:760px;margin:auto;padding:22px 16px 30px}
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;gap:12px}
+h1{font-size:21px;font-weight:650;margin:0;letter-spacing:-.3px}
+.header-actions{display:flex;align-items:center;gap:8px}
+.nav{display:flex;align-items:center;gap:14px}
+button{border:0;background:transparent;color:var(--button);cursor:pointer;font:inherit}
+.arrow,.theme-toggle{width:38px;height:38px;border-radius:50%;display:grid;place-items:center}
+.arrow{font-size:25px}.theme-toggle{font-size:17px}
+.arrow:hover,.theme-toggle:hover{background:var(--hover)}
+.month{min-width:155px;text-align:center;font-size:18px;font-weight:600}
+.week,.calendar{display:grid;grid-template-columns:repeat(7,1fr)}
+.week{margin-bottom:7px;color:var(--muted);font-size:12px;font-weight:600;text-align:center}
+.day{min-height:82px;border-top:1px solid var(--line);padding:9px 5px 6px;position:relative;text-align:center;cursor:pointer}
+.day:hover{background:var(--day-hover)}
+.empty{cursor:default}.empty:hover{background:transparent}
+.num{font-size:14px;font-weight:500;margin-bottom:9px}
+.status{display:flex;justify-content:center;gap:5px;min-height:11px}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.green{background:#43b96b}.red{background:#e34b4b}.yellow{background:#e4a62b}
+.blue{background:#4d8edb}.purple{background:#8755c5}.gray{background:#7a858f}
+.outline{background:var(--bg);border:1.5px solid #8b949e}
+.today .num{width:28px;height:28px;margin:0 auto 5px;border-radius:50%;background:var(--today-bg);color:var(--today-text);display:grid;place-items:center}
+.legend{margin-top:24px;padding-top:15px;border-top:1px solid var(--line);display:flex;justify-content:center;gap:16px;flex-wrap:wrap;color:var(--legend);font-size:11px}
+.legend span{display:flex;align-items:center;gap:5px}
+
+/* modal */
+.overlay{position:fixed;inset:0;background:var(--overlay);display:none;align-items:flex-end;justify-content:center;padding:0}
+.overlay.open{display:flex}
+.modal{background:var(--modal);width:min(100%,560px);border-radius:22px 22px 0 0;padding:20px 18px 28px;box-shadow:0 -8px 30px var(--shadow);max-height:90vh;overflow:auto}
+.modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+.modal-title{font-size:19px;font-weight:650}
+.close{font-size:27px;width:36px;height:36px;border-radius:50%;color:var(--muted)}
+.close:hover{background:var(--hover)}
+.date-label{text-align:center;color:var(--muted);font-size:13px;margin-top:-9px;margin-bottom:20px}
+.elevator{border:1px solid var(--card-line);border-radius:15px;padding:15px;margin-bottom:12px}
+.elevator-name{font-weight:650;font-size:15px;margin-bottom:12px}
+.options{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.option{padding:10px 8px;border:1px solid var(--option-line);border-radius:10px;text-align:center;font-size:13px;background:var(--option-bg)}
+.option.selected{border-color:var(--button);background:var(--selected-bg);font-weight:600}
+.detail{margin-top:12px}
+.detail label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px}
+.detail input,.detail textarea{width:100%;border:1px solid var(--option-line);border-radius:10px;background:var(--input-bg);color:var(--text);font:inherit;font-size:14px;padding:10px 11px;outline:none}
+.detail input:focus,.detail textarea:focus{border-color:#6e7d8d}
+.detail textarea{min-height:78px;resize:vertical}
+.detail-hint{font-size:11px;color:var(--muted);margin-top:5px}
+.save{width:100%;margin-top:5px;padding:13px;border-radius:11px;background:#273444;color:#fff;font-weight:600}
+html[data-theme="dark"] .save{background:#e7edf4;color:#11161b}
+.save:hover{filter:brightness(.93)}
+.report-main{display:block;width:100%;margin-top:22px;padding:13px;border-radius:11px;background:#273444;color:#fff;font-weight:600}
+html[data-theme="dark"] .report-main{background:#e7edf4;color:#11161b}
+.report-main:hover{filter:brightness(.93)}
+.report-range{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.report-range label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px}
+.report-range input{width:100%;border:1px solid var(--option-line);border-radius:10px;background:var(--input-bg);color:var(--text);font:inherit;font-size:14px;padding:10px 11px;outline:none}
+.report-range input:focus{border-color:#6e7d8d}
+.report-error{font-size:12px;color:#d45454;min-height:18px;margin:2px 0 8px}
+.report-output{display:none;margin-top:18px}
+.report-output.show{display:block}
+.report-period{font-size:13px;color:var(--muted);text-align:center;margin-bottom:14px}
+.report-summary{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px}
+.report-card{border:1px solid var(--card-line);border-radius:14px;padding:13px}
+.report-card-title{font-weight:650;font-size:14px;margin-bottom:9px}
+.report-stat{display:flex;justify-content:space-between;gap:12px;font-size:12px;padding:4px 0;color:var(--muted)}
+.report-stat strong{color:var(--text);font-weight:650}
+.report-list{border-top:1px solid var(--line);padding-top:8px}
+.report-day{padding:10px 0;border-bottom:1px solid var(--line)}
+.report-day:last-child{border-bottom:0}
+.report-day-date{font-size:13px;font-weight:650;margin-bottom:6px}
+.report-entry{font-size:12px;color:var(--muted);line-height:1.45;margin:3px 0}
+.report-entry strong{color:var(--text)}
+.report-empty{text-align:center;color:var(--muted);font-size:13px;padding:18px 4px}
+
+.auth-card{width:min(100%,420px);border:1px solid var(--card-line);border-radius:18px;padding:22px;background:var(--modal);box-shadow:0 14px 40px var(--shadow)}
+.auth-title{font-size:22px;font-weight:700;margin:0 0 6px}
+.auth-copy{font-size:13px;color:var(--muted);line-height:1.45;margin-bottom:18px}
+.auth-field{margin-bottom:12px}
+.auth-field label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px}
+.auth-field input{width:100%;border:1px solid var(--option-line);border-radius:10px;background:var(--input-bg);color:var(--text);font:inherit;font-size:14px;padding:11px 12px;outline:none}
+.auth-field input:focus{border-color:#6e7d8d}
+.auth-error{font-size:12px;color:#d45454;min-height:18px;margin:4px 0 8px}
+.auth-submit{width:100%;padding:13px;border-radius:11px;background:#273444;color:#fff;font-weight:600}
+.auth-switch{width:100%;margin-top:10px;padding:9px;color:var(--muted);font-size:12px;text-decoration:underline;text-underline-offset:2px}
+.top-actions{display:flex;align-items:center;gap:6px}
+.auth-top{padding:8px 11px;border:1px solid var(--option-line);border-radius:10px;background:var(--option-bg);font-size:12px;font-weight:650;white-space:nowrap}
+.auth-top:hover{background:var(--hover)}
+html[data-theme="dark"] .auth-submit{background:#e7edf4;color:#11161b}
+.syncbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:-8px 0 16px;font-size:11px;color:var(--muted)}
+.syncbar-left{display:flex;align-items:center;gap:7px;min-width:0}
+.sync-dot{width:8px;height:8px;border-radius:50%;background:#43b96b;flex:0 0 auto}
+.sync-dot.loading{background:#e4a62b}.sync-dot.error{background:#e34b4b}
+.user-email{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.logout{font-size:11px;color:var(--muted);text-decoration:underline;text-underline-offset:2px}
+.migrate{display:none;width:100%;margin:0 0 14px;padding:10px 12px;border:1px solid var(--option-line);border-radius:10px;background:var(--option-bg);font-size:12px;font-weight:600}
+.migrate.show{display:block}
+@media(max-width:500px){.report-range,.report-summary{grid-template-columns:1fr}}
+@media(max-width:650px){
+header{align-items:flex-start}.header-actions{flex-direction:column-reverse;align-items:flex-end;gap:4px}.nav{gap:5px}
+}
+@media(max-width:500px){
+.app{padding:18px 10px 24px}.day{min-height:74px;padding-top:8px}.month{font-size:17px;min-width:130px}.week{font-size:11px}
+}
+</style>
+</head>
+<body>
+<div class="overlay" id="authOverlay" style="z-index:60;align-items:center;padding:20px">
+  <div class="auth-card">
+    <div class="modal-head" style="margin-bottom:10px">
+      <div class="auth-title" id="authTitle">Ingresar</div>
+      <button class="close" id="authClose" type="button">×</button>
+    </div>
+    <div class="auth-copy" id="authCopy">Iniciá sesión para registrar o editar incidentes.</div>
+    <form id="authForm">
+      <div class="auth-field"><label for="loginEmail">Email</label><input id="loginEmail" type="email" autocomplete="email" required></div>
+      <div class="auth-field"><label for="loginPassword">Contraseña</label><input id="loginPassword" type="password" autocomplete="current-password" minlength="6" required></div>
+      <div class="auth-error" id="loginError"></div>
+      <button class="auth-submit" id="loginButton" type="submit">Ingresar</button>
+    </form>
+    <button class="auth-switch" id="authSwitch" type="button">¿No tenés cuenta? Crear cuenta</button>
+  </div>
+</div>
+<div class="app">
+<header>
+<h1>Ascensores</h1>
+<div class="header-actions">
+<div class="top-actions"><button class="auth-top" id="authTop" type="button">Login / Sign up</button><button class="theme-toggle" id="themeToggle" aria-label="Cambiar tema" title="Cambiar tema">☾</button></div>
+<div class="nav">
+<button class="arrow" id="prev" aria-label="Mes anterior">‹</button>
+<div class="month" id="month"></div>
+<button class="arrow" id="next" aria-label="Mes siguiente">›</button>
+</div>
+</div>
+</header>
+<div class="syncbar">
+  <div class="syncbar-left"><span class="sync-dot loading" id="syncDot"></span><span id="syncText">Cargando calendario…</span><span class="user-email" id="userEmail"></span></div>
+  <button class="logout" id="logout" style="display:none">Cerrar sesión</button>
+</div>
+<button class="migrate" id="migrateLocal">Importar registros guardados en este dispositivo</button>
+
+<div class="week"><div>Lun</div><div>Mar</div><div>Mié</div><div>Jue</div><div>Vie</div><div>Sáb</div><div>Dom</div></div>
+<div class="calendar" id="calendar"></div>
+
+<div class="legend">
+<span><i class="dot green"></i>Funcionando</span>
+<span><i class="dot red"></i>FS</span>
+<span><i class="dot yellow"></i>PA</span>
+<span><i class="dot purple"></i>EE</span>
+<span><i class="dot gray"></i>Otro</span>
+</div>
+
+<button class="report-main" id="openReport">Generar reporte</button>
+</div>
+
+<div class="overlay" id="overlay">
+<div class="modal">
+<div class="modal-head">
+<div class="modal-title">Registro del día</div>
+<button class="close" id="close">×</button>
+</div>
+<div class="date-label" id="dateLabel"></div>
+
+<div class="elevator">
+<div class="elevator-name">Ascensor Par</div>
+<div class="options" id="parOptions"></div>
+<div class="detail" id="parDetail"></div>
+</div>
+
+<div class="elevator">
+<div class="elevator-name">Ascensor Impar</div>
+<div class="options" id="imparOptions"></div>
+<div class="detail" id="imparDetail"></div>
+</div>
+
+<button class="save" id="save">Guardar</button>
+</div>
+</div>
+
+<div class="overlay" id="reportOverlay">
+<div class="modal">
+<div class="modal-head">
+<div class="modal-title">Generar reporte</div>
+<button class="close" id="reportClose">×</button>
+</div>
+<div class="date-label">Elegí el período que querés analizar</div>
+<div class="report-range">
+<div>
+<label for="reportFrom">Desde</label>
+<input id="reportFrom" type="date">
+</div>
+<div>
+<label for="reportTo">Hasta</label>
+<input id="reportTo" type="date">
+</div>
+</div>
+<div class="report-error" id="reportError"></div>
+<button class="save" id="generateReport">Generar</button>
+<div class="report-output" id="reportOutput"></div>
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const KEY="ascensores-v1";
+const THEME_KEY="ascensores-theme";
+const SUPABASE_URL="https://hupiynyoxwujalmebite.supabase.co";
+const SUPABASE_KEY="sb_publishable_0vtFf95JA0haWoznbZhpcQ_idAhJIRz";
+const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+
+let data={};
+let view=new Date(); view.setDate(1);
+let editingKey=null;
+let currentUser=null;
+let pendingDay=null;
+let authMode="login";
+let temp={par:null,impar:null,parFloor:"",imparFloor:"",parOther:"",imparOther:""};
+
+const labels=["Funcionando","FS","PA","EE","Otro"];
+const classes=["green","red","yellow","purple","gray"];
+const months=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+
+function normalizeStatus(v){
+  if(typeof v==="string"){
+    const idx=labels.indexOf(v);
+    return idx>=0?idx+1:null;
+  }
+  const map={1:1,2:2,3:3,4:3,5:2,6:4,7:5};
+  return map[v]||null;
+}
+function statusLabel(v){const n=normalizeStatus(v);return n?labels[n-1]:null}
+
+function setSync(state,text){
+  const dot=document.getElementById("syncDot");
+  dot.className="sync-dot"+(state==="loading"?" loading":state==="error"?" error":"");
+  document.getElementById("syncText").textContent=text;
+}
+
+function setTheme(theme){
+  document.documentElement.dataset.theme=theme;
+  localStorage.setItem(THEME_KEY,theme);
+  const toggle=document.getElementById("themeToggle");
+  toggle.textContent=theme==="dark"?"☀":"☾";
+  toggle.title=theme==="dark"?"Usar tema claro":"Usar tema oscuro";
+  toggle.setAttribute("aria-label",toggle.title);
+}
+function initTheme(){
+  const saved=localStorage.getItem(THEME_KEY);
+  const preferred=window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";
+  setTheme(saved||preferred);
+}
+
+function rowToRecord(row){
+  return {
+    par:normalizeStatus(row.par_estado), impar:normalizeStatus(row.impar_estado),
+    parFloor:row.par_estado==="PA"?(row.par_detalle||""):"",
+    imparFloor:row.impar_estado==="PA"?(row.impar_detalle||""):"",
+    parOther:row.par_estado==="Otro"?(row.par_detalle||""):"",
+    imparOther:row.impar_estado==="Otro"?(row.impar_detalle||""):""
+  };
+}
+function recordToRow(fecha,rec){
+  const par=statusLabel(rec.par), impar=statusLabel(rec.impar);
+  return {
+    fecha,
+    par_estado:par,
+    par_detalle:par==="PA"?(rec.parFloor||null):par==="Otro"?(rec.parOther||null):null,
+    impar_estado:impar,
+    impar_detalle:impar==="PA"?(rec.imparFloor||null):impar==="Otro"?(rec.imparOther||null):null,
+    updated_at:new Date().toISOString()
+  };
+}
+
+async function loadData(){
+  setSync("loading","Sincronizando…");
+  const {data:rows,error}=await db.from("registros_ascensores").select("*").order("fecha",{ascending:true});
+  if(error){setSync("error","Error de conexión");throw error}
+  data={};
+  (rows||[]).forEach(row=>data[row.fecha]=rowToRecord(row));
+  setSync("ok","Sincronizado");
+  render();
+  updateMigrationButton();
+}
+
+async function saveRemoteDay(){
+  setSync("loading","Guardando…");
+  if(!temp.par&&!temp.impar){
+    const {error}=await db.from("registros_ascensores").delete().eq("fecha",editingKey);
+    if(error){setSync("error","No se pudo guardar");throw error}
+    delete data[editingKey];
+  }else{
+    const rec={...temp};
+    const {error}=await db.from("registros_ascensores").upsert(recordToRow(editingKey,rec),{onConflict:"fecha"});
+    if(error){setSync("error","No se pudo guardar");throw error}
+    data[editingKey]=rec;
+  }
+  setSync("ok","Sincronizado");
+}
+
+function render(){
+const y=view.getFullYear(),m=view.getMonth();
+document.getElementById("month").textContent=months[m]+" "+y;
+const first=(new Date(y,m,1).getDay()+6)%7, days=new Date(y,m+1,0).getDate();
+const cal=document.getElementById("calendar"); cal.innerHTML="";
+for(let i=0;i<first;i++){const e=document.createElement("div");e.className="day empty";cal.appendChild(e)}
+for(let d=1;d<=days;d++){
+const key=`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+const e=document.createElement("div");e.className="day";
+const today=new Date();
+if(d===today.getDate()&&m===today.getMonth()&&y===today.getFullYear())e.classList.add("today");
+e.innerHTML=`<div class="num">${d}</div><div class="status"></div>`;
+const status=e.querySelector(".status"),rec=data[key];
+if(rec){[["par","parFloor","parOther"],["impar","imparFloor","imparOther"]].forEach(([field,floorField,otherField])=>{
+  const v=normalizeStatus(rec[field]);
+  if(v){const dot=document.createElement("i");dot.className="dot "+classes[v-1];let title=labels[v-1];
+  if(v===3&&rec[floorField])title+=` · Piso ${rec[floorField]}`;
+  if(v===5&&rec[otherField])title+=` · ${rec[otherField]}`;
+  dot.title=title;status.appendChild(dot)}
+})}
+e.onclick=()=>openDay(key,d,m,y);cal.appendChild(e);
+}}
+
+function openDay(key,d,m,y){
+if(!currentUser){pendingDay={key,d,m,y};openAuth("login");return;}
+editingKey=key;const rec=data[key]||{};
+temp={par:normalizeStatus(rec.par),impar:normalizeStatus(rec.impar),parFloor:rec.parFloor||"",imparFloor:rec.imparFloor||"",parOther:rec.parOther||"",imparOther:rec.imparOther||""};
+document.getElementById("dateLabel").textContent=`${d} de ${months[m]} de ${y}`;
+buildOptions("parOptions","par");buildOptions("imparOptions","impar");document.getElementById("overlay").classList.add("open");
+}
+function buildOptions(id,field){
+const box=document.getElementById(id);box.innerHTML="";
+labels.forEach((label,i)=>{const b=document.createElement("button");b.className="option";b.textContent=label;if(temp[field]===i+1)b.classList.add("selected");b.onclick=()=>{temp[field]=i+1;buildOptions(id,field)};box.appendChild(b)});buildDetail(field);
+}
+function buildDetail(field){
+  const detail=document.getElementById(field+"Detail");detail.innerHTML="";const selected=temp[field];
+  if(selected===3){const floorField=field+"Floor";detail.innerHTML=`<label for="${floorField}">¿En qué piso quedó con la puerta abierta?</label><input id="${floorField}" type="text" autocomplete="off" placeholder="Ej.: 7 o PB" value="${escapeHtml(temp[floorField])}">`;const input=document.getElementById(floorField);input.addEventListener("input",e=>temp[floorField]=e.target.value);setTimeout(()=>input.focus(),0)}
+  if(selected===5){const otherField=field+"Other";detail.innerHTML=`<label for="${otherField}">¿Qué pasó?</label><textarea id="${otherField}" placeholder="Escribí una breve descripción...">${escapeHtml(temp[otherField])}</textarea>`;const textarea=document.getElementById(otherField);textarea.addEventListener("input",e=>temp[otherField]=e.target.value);setTimeout(()=>textarea.focus(),0)}
+}
+function escapeHtml(value){return String(value??"").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]))}
+function formatDateLong(key){const [y,m,d]=key.split("-").map(Number);return `${d} de ${months[m-1]} de ${y}`}
+function formatDateShort(key){const [y,m,d]=key.split("-").map(Number);return `${String(d).padStart(2,"0")}/${String(m).padStart(2,"0")}/${y}`}
+function statusText(rec,field){const v=normalizeStatus(rec[field]);if(!v)return "Sin registro";let text=labels[v-1];if(v===3&&rec[field+"Floor"])text+=` · Piso ${rec[field+"Floor"]}`;if(v===5&&rec[field+"Other"])text+=` · ${rec[field+"Other"]}`;return text}
+function generateReport(){
+  const from=document.getElementById("reportFrom").value,to=document.getElementById("reportTo").value,error=document.getElementById("reportError"),output=document.getElementById("reportOutput");error.textContent="";output.classList.remove("show");output.innerHTML="";
+  if(!from||!to){error.textContent="Elegí una fecha de inicio y una fecha de fin.";return}if(from>to){error.textContent="La fecha 'Desde' no puede ser posterior a la fecha 'Hasta'.";return}
+  const records=Object.keys(data).filter(k=>k>=from&&k<=to).sort().map(k=>[k,data[k]]);const counts={par:[0,0,0,0,0],impar:[0,0,0,0,0]};records.forEach(([k,rec])=>["par","impar"].forEach(field=>{const v=normalizeStatus(rec[field]);if(v)counts[field][v-1]++}));
+  const makeCard=(title,field)=>`<div class="report-card"><div class="report-card-title">${title}</div>${labels.map((label,i)=>`<div class="report-stat"><span>${label}</span><strong>${counts[field][i]}</strong></div>`).join("")}</div>`;
+  let html=`<div class="report-period">${formatDateShort(from)} — ${formatDateShort(to)}</div><div class="report-summary">${makeCard("Ascensor Par","par")}${makeCard("Ascensor Impar","impar")}</div>`;
+  if(!records.length)html+=`<div class="report-empty">No hay registros cargados dentro de este período.</div>`;else{html+=`<div class="report-list">`;records.forEach(([key,rec])=>{html+=`<div class="report-day"><div class="report-day-date">${formatDateLong(key)}</div><div class="report-entry"><strong>Par:</strong> ${escapeHtml(statusText(rec,"par"))}</div><div class="report-entry"><strong>Impar:</strong> ${escapeHtml(statusText(rec,"impar"))}</div></div>`});html+=`</div>`}output.innerHTML=html;output.classList.add("show");
+}
+
+function getLocalLegacyData(){try{return JSON.parse(localStorage.getItem(KEY)||"{}")||{}}catch{return {}}}
+function updateMigrationButton(){const local=getLocalLegacyData();document.getElementById("migrateLocal").classList.toggle("show",!!currentUser&&Object.keys(local).length>0)}
+async function migrateLocal(){
+  const btn=document.getElementById("migrateLocal"),local=getLocalLegacyData();if(!Object.keys(local).length)return;
+  btn.disabled=true;btn.textContent="Importando…";setSync("loading","Importando datos locales…");
+  try{
+    const rows=Object.entries(local).map(([fecha,rec])=>recordToRow(fecha,{par:normalizeStatus(rec.par),impar:normalizeStatus(rec.impar),parFloor:rec.parFloor||"",imparFloor:rec.imparFloor||"",parOther:rec.parOther||"",imparOther:rec.imparOther||""}));
+    const {error}=await db.from("registros_ascensores").upsert(rows,{onConflict:"fecha"});if(error)throw error;
+    localStorage.removeItem(KEY);await loadData();btn.classList.remove("show");
+  }catch(err){console.error(err);setSync("error","No se pudieron importar los datos");btn.disabled=false;btn.textContent="Importar registros guardados en este dispositivo"}
+}
+
+async function showSession(session){
+  currentUser=session?.user||null;
+  document.getElementById("userEmail").textContent=currentUser?`· ${currentUser.email||""}`:"· Solo lectura";
+  document.getElementById("logout").style.display=currentUser?"inline":"none";
+  document.getElementById("authTop").textContent=currentUser?(currentUser.email||"Mi cuenta"):"Login / Sign up";
+  updateMigrationButton();
+  try{await loadData()}catch(err){
+    console.error(err);
+    setSync("error","No se pudo cargar el calendario");
+  }
+  if(currentUser && pendingDay){
+    const p=pendingDay; pendingDay=null;
+    closeAuth();
+    openDay(p.key,p.d,p.m,p.y);
+  }
+}
+
+function openAuth(mode="login"){
+  authMode=mode;
+  const signup=mode==="signup";
+  document.getElementById("authTitle").textContent=signup?"Crear cuenta":"Ingresar";
+  document.getElementById("authCopy").textContent=signup?"Creá una cuenta para poder registrar incidentes.":"Iniciá sesión para registrar o editar incidentes.";
+  document.getElementById("loginButton").textContent=signup?"Crear cuenta":"Ingresar";
+  document.getElementById("authSwitch").textContent=signup?"¿Ya tenés cuenta? Ingresar":"¿No tenés cuenta? Crear cuenta";
+  document.getElementById("loginPassword").autocomplete=signup?"new-password":"current-password";
+  document.getElementById("loginError").textContent="";
+  document.getElementById("authOverlay").classList.add("open");
+}
+function closeAuth(){document.getElementById("authOverlay").classList.remove("open")}
+
+document.getElementById("authForm").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const email=document.getElementById("loginEmail").value.trim(),password=document.getElementById("loginPassword").value,errorEl=document.getElementById("loginError"),btn=document.getElementById("loginButton");
+  errorEl.textContent="";btn.disabled=true;btn.textContent=authMode==="signup"?"Creando…":"Ingresando…";
+  if(authMode==="signup"){
+    const {data:signupData,error}=await db.auth.signUp({email,password});
+    if(error){errorEl.textContent=error.message||"No se pudo crear la cuenta.";btn.disabled=false;btn.textContent="Crear cuenta";return}
+    if(!signupData.session){errorEl.textContent="Cuenta creada. Revisá tu email para confirmarla y después iniciá sesión.";btn.disabled=false;btn.textContent="Crear cuenta";return}
+  }else{
+    const {error}=await db.auth.signInWithPassword({email,password});
+    if(error){errorEl.textContent="No se pudo iniciar sesión. Revisá email y contraseña.";btn.disabled=false;btn.textContent="Ingresar";return}
+  }
+  btn.disabled=false;
+});
+
+document.getElementById("authTop").onclick=()=>{if(currentUser){document.getElementById("logout").click()}else openAuth("login")};
+document.getElementById("authSwitch").onclick=()=>openAuth(authMode==="login"?"signup":"login");
+document.getElementById("authClose").onclick=()=>{pendingDay=null;closeAuth()};
+document.getElementById("authOverlay").onclick=e=>{if(e.target.id==="authOverlay"){pendingDay=null;closeAuth()}};
+
+document.getElementById("save").onclick=async()=>{
+  if(temp.par!==3)temp.parFloor="";if(temp.impar!==3)temp.imparFloor="";if(temp.par!==5)temp.parOther="";if(temp.impar!==5)temp.imparOther="";
+  const btn=document.getElementById("save");btn.disabled=true;btn.textContent="Guardando…";
+  try{await saveRemoteDay();document.getElementById("overlay").classList.remove("open");render()}catch(err){console.error(err);alert("No se pudo guardar el registro en Supabase.")}finally{btn.disabled=false;btn.textContent="Guardar"}
+};
+document.getElementById("close").onclick=()=>document.getElementById("overlay").classList.remove("open");
+document.getElementById("overlay").onclick=e=>{if(e.target.id==="overlay")e.currentTarget.classList.remove("open")};
+document.getElementById("prev").onclick=()=>{view.setMonth(view.getMonth()-1);render()};document.getElementById("next").onclick=()=>{view.setMonth(view.getMonth()+1);render()};
+document.getElementById("themeToggle").onclick=()=>setTheme(document.documentElement.dataset.theme==="dark"?"light":"dark");
+document.getElementById("openReport").onclick=()=>{const keys=Object.keys(data).sort(),today=new Date(),todayKey=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;document.getElementById("reportFrom").value=keys.length?keys[0]:todayKey;document.getElementById("reportTo").value=keys.length?keys[keys.length-1]:todayKey;document.getElementById("reportError").textContent="";document.getElementById("reportOutput").classList.remove("show");document.getElementById("reportOutput").innerHTML="";document.getElementById("reportOverlay").classList.add("open")};
+document.getElementById("reportClose").onclick=()=>document.getElementById("reportOverlay").classList.remove("open");document.getElementById("reportOverlay").onclick=e=>{if(e.target.id==="reportOverlay")e.currentTarget.classList.remove("open")};document.getElementById("generateReport").onclick=generateReport;
+document.getElementById("migrateLocal").onclick=migrateLocal;
+document.getElementById("logout").onclick=async()=>{await db.auth.signOut();currentUser=null;await loadData();};
+
+db.auth.onAuthStateChange((event,session)=>{showSession(session)});
+
+initTheme();
+render();
+(async()=>{const {data:{session}}=await db.auth.getSession();await showSession(session)})();
+</script>
+</body>
+</html>
