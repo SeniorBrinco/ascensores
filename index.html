@@ -444,7 +444,11 @@ document.getElementById("reportClose").onclick=()=>document.getElementById("repo
 document.getElementById("migrateLocal").onclick=migrateLocal;
 document.getElementById("logout").onclick=async()=>{await db.auth.signOut();currentUser=null;await loadData();};
 
-db.auth.onAuthStateChange((event,session)=>{showSession(session)});
+db.auth.onAuthStateChange((event,session)=>{
+  // No hagas llamadas asíncronas a Supabase directamente dentro de este callback.
+  // En algunos casos puede dejar el login esperando indefinidamente.
+  setTimeout(()=>showSession(session),0);
+});
 
 initTheme();
 render();
