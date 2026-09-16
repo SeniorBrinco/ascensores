@@ -121,6 +121,19 @@ header{align-items:flex-start}.header-actions{flex-direction:column-reverse;alig
 @media(max-width:500px){
 .app{padding:18px 10px 24px}.day{min-height:74px;padding-top:8px}.month{font-size:17px;min-width:130px}.week{font-size:11px}
 }
+
+.overlay{position:fixed;inset:0;background:var(--overlay);padding:16px;align-items:center;justify-content:center}
+.overlay.open{display:flex}
+.modal,.auth-card{position:relative;width:min(100%,560px);max-height:calc(100dvh - 32px);overflow:auto;overscroll-behavior:contain}
+.modal{padding:0 18px 18px}.modal-head{position:sticky;top:0;background:var(--modal);z-index:2;padding:16px 0;margin-bottom:12px}
+.modal-footer{position:sticky;bottom:-18px;background:var(--modal);padding:12px 0 18px;z-index:2}
+body.modal-open{overflow:hidden}
+select{width:100%;padding:10px;border:1px solid var(--option-line);border-radius:10px;background:var(--input-bg);color:var(--text);font:inherit}
+.entry{border-top:1px solid var(--line);padding:12px 0;font-size:13px;line-height:1.5}.entry-actions{display:flex;gap:12px;margin-top:5px}.entry-actions button,.add{font-size:12px;text-decoration:underline}.add{padding:10px 0;font-weight:650}
+.editor{padding:12px;background:var(--selected-bg);border-radius:10px}.editor .detail{margin:10px 0}.editor-actions{display:flex;gap:8px}.editor-actions button{padding:10px;border:1px solid var(--option-line);border-radius:8px}
+.muted{color:var(--muted);font-size:12px}.bar-row{display:grid;grid-template-columns:65px 1fr 90px;gap:10px;align-items:center;margin:10px 0;font-size:12px}.bar-track{height:10px;background:var(--line);border-radius:8px;overflow:hidden}.bar-fill{height:100%;background:#4d8edb;border-radius:8px}.report-output h3{font-size:15px;margin-top:24px}.report-output h4{font-size:13px}.report-stat{align-items:center}
+@media(max-width:500px){.detail input,.detail textarea,select,.auth-field input,.report-range input{font-size:16px}}
+button:focus-visible,.day:focus-visible{outline:2px solid #4d8edb;outline-offset:2px}.day{color:var(--text);border-radius:0}.report-tools{margin:10px 0}.auth-card .modal-head{padding-top:0}
 </style>
 </head>
 <body>
@@ -161,6 +174,7 @@ header{align-items:flex-start}.header-actions{flex-direction:column-reverse;alig
 <div class="week"><div>Lun</div><div>Mar</div><div>Mié</div><div>Jue</div><div>Vie</div><div>Sáb</div><div>Dom</div></div>
 <div class="calendar" id="calendar"></div>
 
+<p class="muted" style="text-align:center;margin-top:18px">Círculos: Par a la izquierda · Impar a la derecha.<br>Vacío: sin registro. El color conserva el último incidente del día.</p>
 <div class="legend">
 <span><i class="dot green"></i>Funcionando</span>
 <span><i class="dot red"></i>FS</span>
@@ -180,19 +194,8 @@ header{align-items:flex-start}.header-actions{flex-direction:column-reverse;alig
 </div>
 <div class="date-label" id="dateLabel"></div>
 
-<div class="elevator">
-<div class="elevator-name">Ascensor Par</div>
-<div class="options" id="parOptions"></div>
-<div class="detail" id="parDetail"></div>
-</div>
-
-<div class="elevator">
-<div class="elevator-name">Ascensor Impar</div>
-<div class="options" id="imparOptions"></div>
-<div class="detail" id="imparDetail"></div>
-</div>
-
-<button class="save" id="save">Guardar</button>
+<div id="dayEntries"></div><div class="report-error" id="dayError" role="alert"></div>
+<div class="modal-footer"><button class="save" id="save">Guardar cambios</button></div>
 </div>
 </div>
 
@@ -214,7 +217,7 @@ header{align-items:flex-start}.header-actions{flex-direction:column-reverse;alig
 </div>
 </div>
 <div class="report-error" id="reportError"></div>
-<button class="save" id="generateReport">Generar</button>
+<div class="report-tools"><label for="reportElevator">Ascensor</label><select id="reportElevator"><option value="all">Ambos</option><option value="par">Par</option><option value="impar">Impar</option></select></div><button class="save" id="generateReport">Generar</button>
 <div class="report-output" id="reportOutput"></div>
 </div>
 </div>
@@ -227,255 +230,75 @@ const SUPABASE_URL="https://hupiynyoxwujalmebite.supabase.co";
 const SUPABASE_KEY="sb_publishable_0vtFf95JA0haWoznbZhpcQ_idAhJIRz";
 const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
-let data={};
-let view=new Date(); view.setDate(1);
-let editingKey=null;
-let currentUser=null;
-let pendingDay=null;
-let authMode="login";
-let temp={par:null,impar:null,parFloor:"",imparFloor:"",parOther:"",imparOther:""};
-
-const labels=["Funcionando","FS","PA","EE","Otro"];
-const classes=["green","red","yellow","purple","gray"];
-const months=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
-
-function normalizeStatus(v){
-  if(typeof v==="string"){
-    const idx=labels.indexOf(v);
-    return idx>=0?idx+1:null;
-  }
-  const map={1:1,2:2,3:3,4:3,5:2,6:4,7:5};
-  return map[v]||null;
-}
-function statusLabel(v){const n=normalizeStatus(v);return n?labels[n-1]:null}
-
-function setSync(state,text){
-  const dot=document.getElementById("syncDot");
-  dot.className="sync-dot"+(state==="loading"?" loading":state==="error"?" error":"");
-  document.getElementById("syncText").textContent=text;
-}
-
-function setTheme(theme){
-  document.documentElement.dataset.theme=theme;
-  localStorage.setItem(THEME_KEY,theme);
-  const toggle=document.getElementById("themeToggle");
-  toggle.textContent=theme==="dark"?"☀":"☾";
-  toggle.title=theme==="dark"?"Usar tema claro":"Usar tema oscuro";
-  toggle.setAttribute("aria-label",toggle.title);
-}
-function initTheme(){
-  const saved=localStorage.getItem(THEME_KEY);
-  const preferred=window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";
-  setTheme(saved||preferred);
-}
-
-function rowToRecord(row){
-  return {
-    par:normalizeStatus(row.par_estado), impar:normalizeStatus(row.impar_estado),
-    parFloor:row.par_estado==="PA"?(row.par_detalle||""):"",
-    imparFloor:row.impar_estado==="PA"?(row.impar_detalle||""):"",
-    parOther:row.par_estado==="Otro"?(row.par_detalle||""):"",
-    imparOther:row.impar_estado==="Otro"?(row.impar_detalle||""):""
-  };
-}
-function recordToRow(fecha,rec){
-  const par=statusLabel(rec.par), impar=statusLabel(rec.impar);
-  return {
-    fecha,
-    par_estado:par,
-    par_detalle:par==="PA"?(rec.parFloor||null):par==="Otro"?(rec.parOther||null):null,
-    impar_estado:impar,
-    impar_detalle:impar==="PA"?(rec.imparFloor||null):impar==="Otro"?(rec.imparOther||null):null,
-    updated_at:new Date().toISOString()
-  };
-}
-
+let data={}, revisions={}, currentUser=null, pendingDay=null, authMode='login', editingKey=null;
+let editingRevision=0;
+let temp=[], baseline='', editor=null, saving=false, loaded=false, schemaReady=false, lastFocus=null;
+let view=new Date();view.setDate(1);
+const labels=['Funcionando','FS','PA','EE','Otro'];
+const classes=['green','red','yellow','purple','gray'];
+const months=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+const names={par:'Par',impar:'Impar'};
+const $=id=>document.getElementById(id);
+const escapeHtml=value=>String(value??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+const dateKey=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const formatDateShort=k=>k.split('-').reverse().join('/');
+const formatDateLong=k=>{const [y,m,d]=k.split('-').map(Number);return `${d} de ${months[m-1]} de ${y}`};
+const floorLabel=f=>f===null?'Sin piso informado':f===0?'PB (0)':`Piso ${f}`;
+function normalizeFloor(v){if(v===null||v===undefined||String(v).trim()==='')return null;const t=String(v).trim().toLowerCase();if(['pb','planta baja'].includes(t))return 0;return /^\d+$/.test(t)&&+t<=10?+t:null}
+// Numeric mappings are used ONLY when importing the original local v1 format.
+function legacyStatus(v){return typeof v==='string'?(labels.includes(v)?v:null):({1:'Funcionando',2:'FS',3:'PA',4:'PA',5:'FS',6:'EE',7:'Otro'}[v]||null)}
+function legacyEntries(row){return ['par','impar'].flatMap(e=>{const status=row[e+'_estado'];if(!labels.includes(status))return [];const detail=row[e+'_detalle']||'';const floor=status==='PA'?normalizeFloor(detail):null;return [{id:`legacy-${row.fecha}-${e}`,elevator:e,status,time:null,floor,note:status==='Otro'?detail:status==='PA'&&floor===null&&detail?`Piso original: ${detail}`:'',createdAt:null}]})}
+function rowEntries(row){return Array.isArray(row.incidentes)?row.incidentes:legacyEntries(row)}
+function setSync(state,message){$('syncDot').className='sync-dot'+(state==='loading'?' loading':state==='error'?' error':'');$('syncText').textContent=message}
+function setTheme(theme){document.documentElement.dataset.theme=theme;try{localStorage.setItem(THEME_KEY,theme)}catch{}$('themeToggle').textContent=theme==='dark'?'☀':'☾';$('themeToggle').setAttribute('aria-label',theme==='dark'?'Usar tema claro':'Usar tema oscuro')}
+function initTheme(){let saved;try{saved=localStorage.getItem(THEME_KEY)}catch{}setTheme(saved|| (matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'))}
 async function loadData(){
-  setSync("loading","Sincronizando…");
-  const {data:rows,error}=await db.from("registros_ascensores").select("*").order("fecha",{ascending:true});
-  if(error){setSync("error","Error de conexión");throw error}
-  data={};
-  (rows||[]).forEach(row=>data[row.fecha]=rowToRecord(row));
-  setSync("ok","Sincronizado");
-  render();
-  updateMigrationButton();
+ setSync('loading','Sincronizando…');let rows=[];
+ for(let start=0;;start+=500){const result=await db.from('registros_ascensores').select('*').order('fecha',{ascending:true}).range(start,start+499);if(result.error){setSync('error','No se pudo cargar el calendario');throw result.error}rows.push(...result.data);if(result.data.length<500)break}
+ // A separate column probe also detects a missing migration on an empty table.
+ const probe=await db.from('registros_ascensores').select('revision,incidentes').limit(1);schemaReady=!probe.error;
+ data={};revisions={};rows.forEach(r=>{data[r.fecha]=rowEntries(r);revisions[r.fecha]=r.revision||0});loaded=true;
+ setSync(schemaReady?'ok':'error',schemaReady?'Sincronizado':'Falta aplicar actualizar-base.sql para guardar');render();updateMigrationButton();
 }
+function ordered(entries){return entries.map((e,i)=>({e,i})).sort((a,b)=>{const group=e=>e.time?1:e.createdAt?2:0;const diff=group(a.e)-group(b.e);if(diff)return diff;if(a.e.time&&b.e.time)return a.e.time.localeCompare(b.e.time)||a.i-b.i;return a.i-b.i}).map(x=>x.e)}
+function dailyStatus(entries){const incidents=entries.filter(e=>e.status!=='Funcionando');const candidates=incidents.length?incidents:entries;return ordered(candidates).at(-1)?.status||null}
+function entryText(e){return `${e.time||'Sin hora'} · ${e.status}${e.floor!==null?' · '+floorLabel(e.floor):e.status==='PA'?' · Sin piso informado':''}${e.note?' · '+e.note:''}`}
+function render(){const y=view.getFullYear(),m=view.getMonth();$('month').textContent=months[m]+' '+y;const cal=$('calendar');cal.innerHTML='';for(let i=0;i<(new Date(y,m,1).getDay()+6)%7;i++){const el=document.createElement('div');el.className='day empty';cal.append(el)}for(let d=1;d<=new Date(y,m+1,0).getDate();d++){const key=dateKey(new Date(y,m,d)),entries=data[key]||[],el=document.createElement('button');el.type='button';el.className='day'+(key===dateKey(new Date())?' today':'');el.innerHTML=`<div class="num">${d}</div><div class="status"></div>`;const descriptions=[];['par','impar'].forEach(e=>{const records=entries.filter(r=>r.elevator===e),status=dailyStatus(records),dot=document.createElement('i');dot.className='dot '+(status?classes[labels.indexOf(status)]:'outline');dot.title=`${names[e]}: ${status||'Sin registro'} · ${records.filter(r=>r.status!=='Funcionando').length} incidentes`;descriptions.push(dot.title);el.querySelector('.status').append(dot)});el.setAttribute('aria-label',formatDateLong(key)+'. '+descriptions.join('. '));el.onclick=()=>openDay(key);cal.append(el)}}
+function showModal(id){lastFocus=document.activeElement;$(id).classList.add('open');document.body.classList.add('modal-open');const card=$(id).firstElementChild;card.setAttribute('role','dialog');card.setAttribute('aria-modal','true');card.setAttribute('aria-label',card.querySelector('.modal-title,.auth-title')?.textContent||'Diálogo');requestAnimationFrame(()=>card.querySelector('button,input,select')?.focus())}
+function hideModal(id){$(id).classList.remove('open');if(!document.querySelector('.overlay.open'))document.body.classList.remove('modal-open');lastFocus?.focus()}
+function openDay(key){if(!loaded){alert('Esperá a que termine de cargar el calendario.');return}if(!currentUser){pendingDay=key;openAuth();return}editingKey=key;editingRevision=revisions[key]||0;temp=structuredClone(data[key]||[]);baseline=JSON.stringify(temp);editor=null;$('dateLabel').textContent=formatDateLong(key);$('dayError').textContent='';buildDay();showModal('overlay')}
+function closeDay(){if(saving)return;if((JSON.stringify(temp)!==baseline||editor)&&!confirm('Hay cambios sin guardar. ¿Querés descartarlos?'))return;editor=null;hideModal('overlay')}
+function buildDay(){const box=$('dayEntries');box.innerHTML='';['par','impar'].forEach(e=>{const section=document.createElement('div');section.className='elevator';section.innerHTML=`<div class="elevator-name">Ascensor ${names[e]}</div>`;const records=ordered(temp.filter(r=>r.elevator===e));if(!records.length)section.insertAdjacentHTML('beforeend','<p class="muted">Sin registros en este día.</p>');records.forEach(r=>{const line=document.createElement('div');line.className='entry';const text=document.createElement('div');text.textContent=entryText(r);line.append(text);const actions=document.createElement('div');actions.className='entry-actions';[['Editar',()=>startEditor(e,r)],['Eliminar',()=>{if(confirm('¿Eliminar este registro?')){temp=temp.filter(x=>x.id!==r.id);if(editor?.id===r.id)editor=null;buildDay()}}]].forEach(([title,fn])=>{const b=document.createElement('button');b.textContent=title;b.onclick=fn;b.disabled=!!editor;actions.append(b)});line.append(actions);section.append(line)});const add=document.createElement('button');add.className='add';add.textContent='+ Agregar registro';add.disabled=!!editor;add.onclick=()=>startEditor(e);section.append(add);if(editor?.elevator===e)section.append(buildEditor());box.append(section)});$('save').disabled=!!editor||saving||!schemaReady}
+function startEditor(e,existing){editor=existing?{...existing}:{id:crypto.randomUUID(),elevator:e,status:'PA',time:editingKey===dateKey(new Date())?new Date().toTimeString().slice(0,5):null,floor:null,note:'',createdAt:new Date().toISOString()};buildDay();$('entryStatus').focus()}
+function buildEditor(){const form=document.createElement('form');form.className='editor';form.innerHTML=`<div class="detail"><label for="entryStatus">Estado o incidente</label><select id="entryStatus">${labels.map(s=>`<option ${s===editor.status?'selected':''}>${s}</option>`).join('')}</select></div><div class="detail"><label for="entryTime">Hora (dejá vacío si no la sabés)</label><input id="entryTime" type="time" value="${editor.time||''}"></div><div class="detail"><label for="entryFloor">Piso</label><select id="entryFloor"><option value="" ${editor.floor===null?'selected':''}>No sé el piso</option>${Array.from({length:11},(_,i)=>`<option value="${i}" ${editor.floor===i?'selected':''}>${floorLabel(i)}</option>`).join('')}</select></div><div class="detail"><label for="entryNote">Observación (opcional)</label><textarea id="entryNote" maxlength="2000">${escapeHtml(editor.note)}</textarea></div><div class="editor-actions"><button type="submit">Listo</button><button type="button" id="cancelEntry">Cancelar</button></div><p class="muted">Después presioná «Guardar cambios» para guardar el día.</p>`;
+form.onsubmit=e=>{e.preventDefault();editor.status=$('entryStatus').value;editor.time=$('entryTime').value||null;editor.floor=normalizeFloor($('entryFloor').value);editor.note=$('entryNote').value.trim();const index=temp.findIndex(r=>r.id===editor.id);if(index<0)temp.push({...editor});else temp[index]={...editor};editor=null;buildDay()};form.querySelector('#cancelEntry').onclick=()=>{editor=null;buildDay()};return form}
+async function persistDay(key,entries,revision){const {data:version,error}=await db.rpc('guardar_dia_ascensores',{p_fecha:key,p_incidentes:entries,p_revision:revision});if(error)throw error;data[key]=structuredClone(entries);revisions[key]=version}
+async function saveDay(){if(editor||saving||!schemaReady)return;saving=true;$('save').disabled=true;$('save').textContent='Guardando…';$('dayError').textContent='';$('dayEntries').inert=true;setSync('loading','Guardando…');try{await persistDay(editingKey,temp,editingRevision);baseline=JSON.stringify(temp);hideModal('overlay');render();setSync('ok','Sincronizado')}catch(err){const conflict=String(err.message).includes('CONFLICTO');$('dayError').textContent=conflict?'Otra persona modificó este día. Tus cambios siguen aquí: copiá lo necesario, cerrá y recargá para revisar la nueva versión.':'No se pudo guardar. Tus cambios siguen aquí; revisá la conexión y que hayas aplicado el SQL.';setSync('error','No se pudo guardar')}finally{saving=false;$('dayEntries').inert=false;$('save').disabled=false;$('save').textContent='Guardar cambios'}}
+function statistics(from,to,which){const events=Object.keys(data).filter(k=>k>=from&&k<=to).sort().flatMap(date=>data[date].filter(e=>which==='all'||e.elevator===which).map(e=>({...e,date})));const incidents=events.filter(e=>e.status!=='Funcionando');return {events,incidents,days:new Set(incidents.map(e=>e.date)).size}}
+function bar(label,count,total){return `<div class="bar-row"><span>${escapeHtml(label)}</span><div class="bar-track"><div class="bar-fill" style="width:${total?count/total*100:0}%"></div></div><span>${count} · ${total?Math.round(count/total*100):0}%</span></div>`}
+function generateReport(){const from=$('reportFrom').value,to=$('reportTo').value,which=$('reportElevator').value,out=$('reportOutput');$('reportError').textContent='';out.classList.remove('show');if(!from||!to||from>to){$('reportError').textContent='Elegí un período válido: Desde debe ser anterior o igual a Hasta.';return}const {events,incidents,days}=statistics(from,to,which);let html=`<div class="report-period">${formatDateShort(from)} — ${formatDateShort(to)} · ${which==='all'?'Ambos ascensores':names[which]}</div><div class="report-summary"><div class="report-card"><strong>${incidents.length}</strong><div class="muted">Incidentes</div></div><div class="report-card"><strong>${days}</strong><div class="muted">Días afectados</div></div></div>`;
+html+='<h3>Incidentes por ascensor</h3>';['par','impar'].filter(e=>which==='all'||e===which).forEach(e=>html+=bar(names[e],incidents.filter(r=>r.elevator===e).length,incidents.length));html+='<h3>Tipos de incidente</h3>';labels.slice(1).forEach(s=>html+=bar(s,incidents.filter(e=>e.status===s).length,incidents.length));html+=`<p class="muted">${events.filter(e=>e.status==='Funcionando').length} registros de «Funcionando», excluidos del total de incidentes.</p>`;
+const pa=incidents.filter(e=>e.status==='PA'),missing=pa.filter(e=>e.floor===null).length;const ranking=Array.from({length:11},(_,floor)=>({floor,count:pa.filter(e=>e.floor===floor).length})).sort((a,b)=>b.count-a.count||a.floor-b.floor);
+html+='<h3>Puertas abiertas por piso</h3><p class="muted">Porcentaje sobre todos los registros PA del período, incluidos los que no tienen piso informado.</p>';if(pa.length){ranking.filter(r=>r.count).forEach(r=>html+=bar(floorLabel(r.floor),r.count,pa.length));html+=bar('Sin piso',missing,pa.length);const max=ranking[0].count,leaders=ranking.filter(r=>r.count===max);if(max)html+=`<p class="muted">${leaders.length===1?`${floorLabel(leaders[0].floor)} reúne ${max} de ${pa.length} registros PA (${Math.round(max/pa.length*100)}%).`:`Mayor cantidad compartida por ${leaders.map(r=>floorLabel(r.floor)).join(', ')}: ${max} registros por piso.`}</p>`}else html+='<p class="muted">No hay puertas abiertas registradas.</p>';
+html+='<p class="muted">Estas cifras describen registros; no miden la probabilidad de falla por viaje.</p><h3>Horarios de los incidentes</h3>';[['00–05 h',0,6],['06–11 h',6,12],['12–17 h',12,18],['18–23 h',18,24]].forEach(([label,a,b])=>html+=bar(label,incidents.filter(e=>e.time&&+e.time.slice(0,2)>=a&&+e.time.slice(0,2)<b).length,incidents.length));html+=bar('Sin hora',incidents.filter(e=>!e.time).length,incidents.length);
+html+='<h3>Evolución mensual</h3>';const totals={};let cursor=from.slice(0,7),last=to.slice(0,7),n=0;while(cursor<=last&&n++<1200){totals[cursor]=0;let [y,m]=cursor.split('-').map(Number);m++;if(m===13){m=1;y++}cursor=`${y}-${String(m).padStart(2,'0')}`}incidents.forEach(e=>totals[e.date.slice(0,7)]=(totals[e.date.slice(0,7)]||0)+1);Object.entries(totals).sort().forEach(([month,count])=>html+=bar(month,count,incidents.length));html+='<p class="muted">Cero significa que no hay incidentes cargados. Los meses de los extremos pueden estar incompletos según el período elegido.</p><h3>Historial del período</h3>';if(!events.length)html+='<p class="report-empty">No hay registros en este período.</p>';let prev='';events.forEach(e=>{if(e.date!==prev){html+=`<h4>${formatDateLong(e.date)}</h4>`;prev=e.date}html+=`<div class="report-entry"><strong>${names[e.elevator]}:</strong> ${escapeHtml(entryText(e))}</div>`});out.innerHTML=html;out.classList.add('show')}
+function getLocalLegacyData(){try{return JSON.parse(localStorage.getItem(KEY)||'{}')||{}}catch{return {}}}
+function updateMigrationButton(){$('migrateLocal').classList.toggle('show',!!currentUser&&schemaReady&&Object.keys(getLocalLegacyData()).length>0)}
+async function migrateLocal(){const local=getLocalLegacyData(),btn=$('migrateLocal');btn.disabled=true;try{await loadData();let imported=0,skipped=0;for(const [fecha,rec] of Object.entries(local)){if(Object.hasOwn(data,fecha)){skipped++;continue}const row={fecha};['par','impar'].forEach(e=>{row[e+'_estado']=legacyStatus(rec[e]);row[e+'_detalle']=row[e+'_estado']==='PA'?rec[e+'Floor']:rec[e+'Other']});const entries=legacyEntries(row);if(entries.length){await persistDay(fecha,entries,0);imported++}delete local[fecha];localStorage.setItem(KEY,JSON.stringify(local))}render();updateMigrationButton();setSync('ok',`${imported} días importados${skipped?`; ${skipped} días existentes sin reemplazar`:''}`)}catch(err){setSync('error','Importación interrumpida. Los registros pendientes se conservan.')}finally{btn.disabled=false}}
+async function showSession(session){currentUser=session?.user||null;$('userEmail').textContent=currentUser?`· ${currentUser.email||''}`:'· Solo lectura';$('logout').style.display=currentUser?'inline':'none';$('authTop').textContent=currentUser?'Mi cuenta':'Ingresar / Crear cuenta';try{await loadData()}catch{}if(currentUser){closeAuth();if(pendingDay&&loaded){const key=pendingDay;pendingDay=null;openDay(key)}}else if($('overlay').classList.contains('open'))hideModal('overlay')}
+function openAuth(mode='login'){authMode=mode;const signup=mode==='signup';$('authTitle').textContent=signup?'Crear cuenta':'Ingresar';$('authCopy').textContent=signup?'Creá una cuenta para registrar incidentes.':'Iniciá sesión para registrar o editar incidentes.';$('loginButton').textContent=signup?'Crear cuenta':'Ingresar';$('authSwitch').textContent=signup?'¿Ya tenés cuenta? Ingresar':'¿No tenés cuenta? Crear cuenta';$('loginPassword').autocomplete=signup?'new-password':'current-password';$('loginError').textContent='';showModal('authOverlay')}
+function closeAuth(){if($('authOverlay').classList.contains('open'))hideModal('authOverlay')}
+$('authForm').addEventListener('submit',async e=>{e.preventDefault();const btn=$('loginButton');btn.disabled=true;$('loginError').textContent='';try{const args={email:$('loginEmail').value.trim(),password:$('loginPassword').value};const result=authMode==='signup'?await db.auth.signUp(args):await db.auth.signInWithPassword(args);if(result.error)throw result.error;if(authMode==='signup'&&!result.data.session)$('loginError').textContent='Cuenta creada. Revisá tu email para confirmarla.'}catch(err){$('loginError').textContent=authMode==='signup'?'No se pudo crear la cuenta. Revisá los datos o intentá ingresar.':'No se pudo ingresar. Revisá los datos y la conexión.'}finally{btn.disabled=false}});
+$('authTop').onclick=()=>currentUser?alert(`Sesión iniciada: ${currentUser.email||''}`):openAuth();$('authSwitch').onclick=()=>openAuth(authMode==='login'?'signup':'login');$('authClose').onclick=()=>{pendingDay=null;closeAuth()};$('save').onclick=saveDay;$('close').onclick=closeDay;
+$('prev').onclick=()=>{view.setMonth(view.getMonth()-1);render()};$('next').onclick=()=>{view.setMonth(view.getMonth()+1);render()};$('themeToggle').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
+$('openReport').onclick=()=>{if(!loaded){alert('Esperá a que termine de cargar el calendario.');return}const keys=Object.keys(data).filter(k=>data[k].length).sort();$('reportFrom').value=keys[0]||dateKey(new Date());$('reportTo').value=keys.at(-1)||dateKey(new Date());$('reportError').textContent='';$('reportOutput').classList.remove('show');showModal('reportOverlay')};$('generateReport').onclick=generateReport;$('reportClose').onclick=()=>hideModal('reportOverlay');['reportFrom','reportTo','reportElevator'].forEach(id=>$(id).onchange=()=>{$('reportOutput').classList.remove('show')});
+$('migrateLocal').onclick=migrateLocal;$('logout').onclick=async()=>{const {error}=await db.auth.signOut();if(error)setSync('error','No se pudo cerrar sesión')};
+['overlay','reportOverlay','authOverlay'].forEach(id=>{$(id).onclick=e=>{if(e.target!==$(id))return;if(id==='overlay')closeDay();else{if(id==='authOverlay')pendingDay=null;hideModal(id)}}});
+document.addEventListener('keydown',e=>{const modal=[...document.querySelectorAll('.overlay.open')].at(-1);if(!modal)return;if(e.key==='Escape'){e.preventDefault();if(modal.id==='overlay')closeDay();else{if(modal.id==='authOverlay')pendingDay=null;hideModal(modal.id)}}if(e.key==='Tab'){const all=[...modal.querySelectorAll('button,input,select,textarea,[tabindex="0"]')].filter(el=>!el.disabled&&el.getClientRects().length),first=all[0],last=all.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus()}}});
+window.addEventListener('beforeunload',e=>{if($('overlay').classList.contains('open')&&(editor||JSON.stringify(temp)!==baseline)){e.preventDefault();e.returnValue=''}});
+db.auth.onAuthStateChange((event,session)=>{if(event==='TOKEN_REFRESHED'){currentUser=session?.user||null;return}setTimeout(()=>showSession(session),0)});
+initTheme();render();
 
-async function saveRemoteDay(){
-  setSync("loading","Guardando…");
-  if(!temp.par&&!temp.impar){
-    const {error}=await db.from("registros_ascensores").delete().eq("fecha",editingKey);
-    if(error){setSync("error","No se pudo guardar");throw error}
-    delete data[editingKey];
-  }else{
-    const rec={...temp};
-    const {error}=await db.from("registros_ascensores").upsert(recordToRow(editingKey,rec),{onConflict:"fecha"});
-    if(error){setSync("error","No se pudo guardar");throw error}
-    data[editingKey]=rec;
-  }
-  setSync("ok","Sincronizado");
-}
-
-function render(){
-const y=view.getFullYear(),m=view.getMonth();
-document.getElementById("month").textContent=months[m]+" "+y;
-const first=(new Date(y,m,1).getDay()+6)%7, days=new Date(y,m+1,0).getDate();
-const cal=document.getElementById("calendar"); cal.innerHTML="";
-for(let i=0;i<first;i++){const e=document.createElement("div");e.className="day empty";cal.appendChild(e)}
-for(let d=1;d<=days;d++){
-const key=`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-const e=document.createElement("div");e.className="day";
-const today=new Date();
-if(d===today.getDate()&&m===today.getMonth()&&y===today.getFullYear())e.classList.add("today");
-e.innerHTML=`<div class="num">${d}</div><div class="status"></div>`;
-const status=e.querySelector(".status"),rec=data[key];
-if(rec){[["par","parFloor","parOther"],["impar","imparFloor","imparOther"]].forEach(([field,floorField,otherField])=>{
-  const v=normalizeStatus(rec[field]);
-  if(v){const dot=document.createElement("i");dot.className="dot "+classes[v-1];let title=labels[v-1];
-  if(v===3&&rec[floorField])title+=` · Piso ${rec[floorField]}`;
-  if(v===5&&rec[otherField])title+=` · ${rec[otherField]}`;
-  dot.title=title;status.appendChild(dot)}
-})}
-e.onclick=()=>openDay(key,d,m,y,e);cal.appendChild(e);
-}}
-
-function openDay(key,d,m,y,dayElement){
-if(!currentUser){pendingDay={key,d,m,y};openAuth("login");return;}
-editingKey=key;const rec=data[key]||{};
-temp={par:normalizeStatus(rec.par),impar:normalizeStatus(rec.impar),parFloor:rec.parFloor||"",imparFloor:rec.imparFloor||"",parOther:rec.parOther||"",imparOther:rec.imparOther||""};
-document.getElementById("dateLabel").textContent=`${d} de ${months[m]} de ${y}`;
-buildOptions("parOptions","par");buildOptions("imparOptions","impar");
-
-const overlay=document.getElementById("overlay");
-const modal=overlay.querySelector(".modal");
-const rect=dayElement.getBoundingClientRect();
-
-let left=rect.right + window.scrollX + 8;
-let top=rect.top + window.scrollY;
-
-if(left + 380 > window.innerWidth + window.scrollX){
-  left=rect.left + window.scrollX - 368;
-}
-
-if(top + 500 > window.innerHeight + window.scrollY){
-  top=window.innerHeight + window.scrollY - 520;
-}
-
-overlay.style.left=`${left}px`;
-overlay.style.top=`${top}px`;
-
-modal.style.left="0";
-modal.style.top="0";
-
-overlay.classList.add("open");
-}
-function buildOptions(id,field){
-const box=document.getElementById(id);box.innerHTML="";
-labels.forEach((label,i)=>{const b=document.createElement("button");b.className="option";b.textContent=label;if(temp[field]===i+1)b.classList.add("selected");b.onclick=()=>{temp[field]=i+1;buildOptions(id,field)};box.appendChild(b)});buildDetail(field);
-}
-function buildDetail(field){
-  const detail=document.getElementById(field+"Detail");detail.innerHTML="";const selected=temp[field];
-  if(selected===3){const floorField=field+"Floor";detail.innerHTML=`<label for="${floorField}">¿En qué piso quedó con la puerta abierta?</label><input id="${floorField}" type="text" autocomplete="off" placeholder="Ej.: 7 o PB" value="${escapeHtml(temp[floorField])}">`;const input=document.getElementById(floorField);input.addEventListener("input",e=>temp[floorField]=e.target.value);setTimeout(()=>input.focus(),0)}
-  if(selected===5){const otherField=field+"Other";detail.innerHTML=`<label for="${otherField}">¿Qué pasó?</label><textarea id="${otherField}" placeholder="Escribí una breve descripción...">${escapeHtml(temp[otherField])}</textarea>`;const textarea=document.getElementById(otherField);textarea.addEventListener("input",e=>temp[otherField]=e.target.value);setTimeout(()=>textarea.focus(),0)}
-}
-function escapeHtml(value){return String(value??"").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]))}
-function formatDateLong(key){const [y,m,d]=key.split("-").map(Number);return `${d} de ${months[m-1]} de ${y}`}
-function formatDateShort(key){const [y,m,d]=key.split("-").map(Number);return `${String(d).padStart(2,"0")}/${String(m).padStart(2,"0")}/${y}`}
-function statusText(rec,field){const v=normalizeStatus(rec[field]);if(!v)return "Sin registro";let text=labels[v-1];if(v===3&&rec[field+"Floor"])text+=` · Piso ${rec[field+"Floor"]}`;if(v===5&&rec[field+"Other"])text+=` · ${rec[field+"Other"]}`;return text}
-function generateReport(){
-  const from=document.getElementById("reportFrom").value,to=document.getElementById("reportTo").value,error=document.getElementById("reportError"),output=document.getElementById("reportOutput");error.textContent="";output.classList.remove("show");output.innerHTML="";
-  if(!from||!to){error.textContent="Elegí una fecha de inicio y una fecha de fin.";return}if(from>to){error.textContent="La fecha 'Desde' no puede ser posterior a la fecha 'Hasta'.";return}
-  const records=Object.keys(data).filter(k=>k>=from&&k<=to).sort().map(k=>[k,data[k]]);const counts={par:[0,0,0,0,0],impar:[0,0,0,0,0]};records.forEach(([k,rec])=>["par","impar"].forEach(field=>{const v=normalizeStatus(rec[field]);if(v)counts[field][v-1]++}));
-  const makeCard=(title,field)=>`<div class="report-card"><div class="report-card-title">${title}</div>${labels.map((label,i)=>`<div class="report-stat"><span>${label}</span><strong>${counts[field][i]}</strong></div>`).join("")}</div>`;
-  let html=`<div class="report-period">${formatDateShort(from)} — ${formatDateShort(to)}</div><div class="report-summary">${makeCard("Ascensor Par","par")}${makeCard("Ascensor Impar","impar")}</div>`;
-  if(!records.length)html+=`<div class="report-empty">No hay registros cargados dentro de este período.</div>`;else{html+=`<div class="report-list">`;records.forEach(([key,rec])=>{html+=`<div class="report-day"><div class="report-day-date">${formatDateLong(key)}</div><div class="report-entry"><strong>Par:</strong> ${escapeHtml(statusText(rec,"par"))}</div><div class="report-entry"><strong>Impar:</strong> ${escapeHtml(statusText(rec,"impar"))}</div></div>`});html+=`</div>`}output.innerHTML=html;output.classList.add("show");
-}
-
-function getLocalLegacyData(){try{return JSON.parse(localStorage.getItem(KEY)||"{}")||{}}catch{return {}}}
-function updateMigrationButton(){const local=getLocalLegacyData();document.getElementById("migrateLocal").classList.toggle("show",!!currentUser&&Object.keys(local).length>0)}
-async function migrateLocal(){
-  const btn=document.getElementById("migrateLocal"),local=getLocalLegacyData();if(!Object.keys(local).length)return;
-  btn.disabled=true;btn.textContent="Importando…";setSync("loading","Importando datos locales…");
-  try{
-    const rows=Object.entries(local).map(([fecha,rec])=>recordToRow(fecha,{par:normalizeStatus(rec.par),impar:normalizeStatus(rec.impar),parFloor:rec.parFloor||"",imparFloor:rec.imparFloor||"",parOther:rec.parOther||"",imparOther:rec.imparOther||""}));
-    const {error}=await db.from("registros_ascensores").upsert(rows,{onConflict:"fecha"});if(error)throw error;
-    localStorage.removeItem(KEY);await loadData();btn.classList.remove("show");
-  }catch(err){console.error(err);setSync("error","No se pudieron importar los datos");btn.disabled=false;btn.textContent="Importar registros guardados en este dispositivo"}
-}
-
-async function showSession(session){
-  currentUser=session?.user||null;
-  document.getElementById("userEmail").textContent=currentUser?`· ${currentUser.email||""}`:"· Solo lectura";
-  document.getElementById("logout").style.display=currentUser?"inline":"none";
-  document.getElementById("authTop").textContent=currentUser?(currentUser.email||"Mi cuenta"):"Login / Sign up";
-  updateMigrationButton();
-  try{await loadData()}catch(err){
-    console.error(err);
-    setSync("error","No se pudo cargar el calendario");
-  }
-  if(currentUser && pendingDay){
-    const p=pendingDay; pendingDay=null;
-    closeAuth();
-    openDay(p.key,p.d,p.m,p.y);
-  }
-}
-
-function openAuth(mode="login"){
-  authMode=mode;
-  const signup=mode==="signup";
-  document.getElementById("authTitle").textContent=signup?"Crear cuenta":"Ingresar";
-  document.getElementById("authCopy").textContent=signup?"Creá una cuenta para poder registrar incidentes.":"Iniciá sesión para registrar o editar incidentes.";
-  document.getElementById("loginButton").textContent=signup?"Crear cuenta":"Ingresar";
-  document.getElementById("authSwitch").textContent=signup?"¿Ya tenés cuenta? Ingresar":"¿No tenés cuenta? Crear cuenta";
-  document.getElementById("loginPassword").autocomplete=signup?"new-password":"current-password";
-  document.getElementById("loginError").textContent="";
-  document.getElementById("authOverlay").classList.add("open");
-}
-function closeAuth(){document.getElementById("authOverlay").classList.remove("open")}
-
-document.getElementById("authForm").addEventListener("submit",async e=>{
-  e.preventDefault();
-  const email=document.getElementById("loginEmail").value.trim(),password=document.getElementById("loginPassword").value,errorEl=document.getElementById("loginError"),btn=document.getElementById("loginButton");
-  errorEl.textContent="";btn.disabled=true;btn.textContent=authMode==="signup"?"Creando…":"Ingresando…";
-  if(authMode==="signup"){
-    const {data:signupData,error}=await db.auth.signUp({email,password});
-    if(error){errorEl.textContent=error.message||"No se pudo crear la cuenta.";btn.disabled=false;btn.textContent="Crear cuenta";return}
-    if(!signupData.session){errorEl.textContent="Cuenta creada. Revisá tu email para confirmarla y después iniciá sesión.";btn.disabled=false;btn.textContent="Crear cuenta";return}
-  }else{
-    const {error}=await db.auth.signInWithPassword({email,password});
-    if(error){errorEl.textContent="No se pudo iniciar sesión. Revisá email y contraseña.";btn.disabled=false;btn.textContent="Ingresar";return}
-  }
-  btn.disabled=false;
-});
-
-document.getElementById("authTop").onclick=()=>{if(currentUser){document.getElementById("logout").click()}else openAuth("login")};
-document.getElementById("authSwitch").onclick=()=>openAuth(authMode==="login"?"signup":"login");
-document.getElementById("authClose").onclick=()=>{pendingDay=null;closeAuth()};
-document.getElementById("authOverlay").onclick=e=>{if(e.target.id==="authOverlay"){pendingDay=null;closeAuth()}};
-
-document.getElementById("save").onclick=async()=>{
-  if(temp.par!==3)temp.parFloor="";if(temp.impar!==3)temp.imparFloor="";if(temp.par!==5)temp.parOther="";if(temp.impar!==5)temp.imparOther="";
-  const btn=document.getElementById("save");btn.disabled=true;btn.textContent="Guardando…";
-  try{await saveRemoteDay();document.getElementById("overlay").classList.remove("open");render()}catch(err){console.error(err);alert("No se pudo guardar el registro en Supabase.")}finally{btn.disabled=false;btn.textContent="Guardar"}
-};
-document.getElementById("close").onclick=()=>document.getElementById("overlay").classList.remove("open");
-document.getElementById("overlay").onclick=e=>{if(e.target.id==="overlay")e.currentTarget.classList.remove("open")};
-document.getElementById("prev").onclick=()=>{view.setMonth(view.getMonth()-1);render()};document.getElementById("next").onclick=()=>{view.setMonth(view.getMonth()+1);render()};
-document.getElementById("themeToggle").onclick=()=>setTheme(document.documentElement.dataset.theme==="dark"?"light":"dark");
-document.getElementById("openReport").onclick=()=>{const keys=Object.keys(data).sort(),today=new Date(),todayKey=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;document.getElementById("reportFrom").value=keys.length?keys[0]:todayKey;document.getElementById("reportTo").value=keys.length?keys[keys.length-1]:todayKey;document.getElementById("reportError").textContent="";document.getElementById("reportOutput").classList.remove("show");document.getElementById("reportOutput").innerHTML="";document.getElementById("reportOverlay").classList.add("open")};
-document.getElementById("reportClose").onclick=()=>document.getElementById("reportOverlay").classList.remove("open");document.getElementById("reportOverlay").onclick=e=>{if(e.target.id==="reportOverlay")e.currentTarget.classList.remove("open")};document.getElementById("generateReport").onclick=generateReport;
-document.getElementById("migrateLocal").onclick=migrateLocal;
-document.getElementById("logout").onclick=async()=>{await db.auth.signOut();currentUser=null;await loadData();};
-
-db.auth.onAuthStateChange((event,session)=>{
-  // No hagas llamadas asíncronas a Supabase directamente dentro de este callback.
-  // En algunos casos puede dejar el login esperando indefinidamente.
-  setTimeout(()=>showSession(session),0);
-});
-
-initTheme();
-render();
-(async()=>{const {data:{session}}=await db.auth.getSession();await showSession(session)})();
 </script>
 </body>
 </html>
