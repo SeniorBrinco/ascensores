@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="es" data-theme="light">
 <head>
@@ -113,6 +112,19 @@ html[data-theme="dark"] .report-main{background:#e7edf4;color:#11161b}
 .monthly-missing{text-align:center;color:var(--muted);font-size:12px;margin-top:18px}
 .monthly-empty{text-align:center;color:var(--muted);font-size:13px;padding:22px 8px}
 
+.monthly-section{border-top:1px solid var(--line);padding-top:20px;margin-top:20px}
+.monthly-section-title{text-align:center;font-size:15px;font-weight:700;margin-bottom:16px}
+.monthly-hbars{display:grid;gap:12px}
+.monthly-hbar-row{display:grid;grid-template-columns:84px 1fr auto;gap:12px;align-items:center;font-size:13px}
+.monthly-hbar-track{height:12px;background:var(--line);border-radius:999px;overflow:hidden}
+.monthly-hbar-fill{height:100%;background:#4d8edb;border-radius:999px}
+.monthly-vbars{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:end;min-height:220px}
+.monthly-vbar-col{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:8px;min-height:220px}
+.monthly-vbar-count{font-size:13px;font-weight:700}
+.monthly-vbar-wrap{height:160px;display:flex;align-items:flex-end}
+.monthly-vbar{width:48px;min-height:6px;border-radius:10px 10px 0 0}
+.monthly-vbar-label{font-size:12px;color:var(--muted);font-weight:650}
+
 .auth-card{width:min(100%,420px);border:1px solid var(--card-line);border-radius:18px;padding:22px;background:var(--modal);box-shadow:0 14px 40px var(--shadow)}
 .auth-title{font-size:22px;font-weight:700;margin:0 0 6px}
 .auth-copy{font-size:13px;color:var(--muted);line-height:1.45;margin-bottom:18px}
@@ -135,7 +147,7 @@ html[data-theme="dark"] .auth-submit{background:#e7edf4;color:#11161b}
 .logout{font-size:11px;color:var(--muted);text-decoration:underline;text-underline-offset:2px}
 .migrate{display:none;width:100%;margin:0 0 14px;padding:10px 12px;border:1px solid var(--option-line);border-radius:10px;background:var(--option-bg);font-size:12px;font-weight:600}
 .migrate.show{display:block}
-@media(max-width:500px){.report-range,.report-summary,.monthly-summary{grid-template-columns:1fr}.monthly-pie{width:170px;height:170px}}
+@media(max-width:500px){.report-range,.report-summary,.monthly-summary{grid-template-columns:1fr}.monthly-pie{width:170px;height:170px}.monthly-hbar-row{grid-template-columns:70px 1fr auto;gap:8px}.monthly-vbars{gap:8px}.monthly-vbar{width:38px}}
 @media(max-width:650px){
 header{align-items:flex-start}.header-actions{flex-direction:column-reverse;align-items:flex-end;gap:4px}.nav{gap:5px}
 }
@@ -283,6 +295,7 @@ form.onsubmit=e=>{e.preventDefault();editor.status=$('entryStatus').value;editor
 async function persistDay(key,entries,revision){const {data:version,error}=await db.rpc('guardar_dia_ascensores',{p_fecha:key,p_incidentes:entries,p_revision:revision});if(error)throw error;data[key]=structuredClone(entries);revisions[key]=version}
 async function saveDay(){if(editor||saving||!schemaReady)return;saving=true;$('save').disabled=true;$('save').textContent='Guardando…';$('dayError').textContent='';$('dayEntries').inert=true;setSync('loading','Guardando…');try{await persistDay(editingKey,temp,editingRevision);baseline=JSON.stringify(temp);hideModal('overlay');render();setSync('ok','Sincronizado')}catch(err){const conflict=String(err.message).includes('CONFLICTO');$('dayError').textContent=conflict?'Otra persona modificó este día. Tus cambios siguen aquí: copiá lo necesario, cerrá y recargá para revisar la nueva versión.':'No se pudo guardar. Tus cambios siguen aquí; revisá la conexión y que hayas aplicado el SQL.';setSync('error','No se pudo guardar')}finally{saving=false;$('dayEntries').inert=false;$('save').disabled=false;$('save').textContent='Guardar cambios'}}
 
+
 function monthKeys(year,month){
  const total=new Date(year,month+1,0).getDate();
  return Array.from({length:total},(_,i)=>dateKey(new Date(year,month,i+1)));
@@ -290,6 +303,8 @@ function monthKeys(year,month){
 function monthlyReportData(year,month){
  const keys=monthKeys(year,month);
  let incidentsTotal=0,incidentDays=0,workingDays=0,missingDays=0;
+ const elevatorIncidentDays={par:0,impar:0};
+ const incidentTypes={FS:0,PA:0,EE:0,Otro:0};
 
  keys.forEach(key=>{
    const entries=data[key]||[];
@@ -298,6 +313,13 @@ function monthlyReportData(year,month){
    if(incidents.length){
      incidentsTotal+=incidents.length;
      incidentDays++;
+
+     if(incidents.some(e=>e.elevator==='par')) elevatorIncidentDays.par++;
+     if(incidents.some(e=>e.elevator==='impar')) elevatorIncidentDays.impar++;
+
+     incidents.forEach(e=>{
+       if(Object.hasOwn(incidentTypes,e.status)) incidentTypes[e.status]++;
+     });
      return;
    }
 
@@ -310,7 +332,7 @@ function monthlyReportData(year,month){
    else missingDays++;
  });
 
- return {incidentsTotal,incidentDays,workingDays,missingDays,totalDays:keys.length};
+ return {incidentsTotal,incidentDays,workingDays,missingDays,totalDays:keys.length,elevatorIncidentDays,incidentTypes};
 }
 function renderMonthlyReport(){
  const year=view.getFullYear(),month=view.getMonth();
@@ -319,9 +341,9 @@ function renderMonthlyReport(){
  const workingPct=knownDays?stats.workingDays/knownDays*100:0;
  const title=`${months[month][0].toUpperCase()+months[month].slice(1)} ${year}`;
 
- let chart='';
+ let pieSection='';
  if(knownDays){
-   chart=`
+   pieSection=`
    <div class="monthly-chart-wrap">
      <div class="monthly-chart-title">Días funcionando vs días con incidentes</div>
      <div class="monthly-pie-row">
@@ -336,7 +358,46 @@ function renderMonthlyReport(){
      ${stats.missingDays?`<div class="monthly-missing">${stats.missingDays} ${stats.missingDays===1?'día excluido':'días excluidos'} por falta de información suficiente.</div>`:''}
    </div>`;
  }else{
-   chart=`<div class="monthly-chart-wrap"><div class="monthly-empty">No hay información suficiente para construir el gráfico de este mes.</div></div>`;
+   pieSection=`<div class="monthly-chart-wrap"><div class="monthly-empty">No hay información suficiente para construir el gráfico de este mes.</div></div>`;
+ }
+
+ const maxElevatorDays=Math.max(stats.elevatorIncidentDays.par,stats.elevatorIncidentDays.impar,0);
+ let elevatorSection='';
+ if(stats.elevatorIncidentDays.par||stats.elevatorIncidentDays.impar){
+   elevatorSection=`
+   <div class="monthly-section">
+     <div class="monthly-section-title">Días con incidentes por ascensor</div>
+     <div class="monthly-hbars">
+       ${['par','impar'].map(key=>`
+         <div class="monthly-hbar-row">
+           <span>${names[key]}</span>
+           <div class="monthly-hbar-track"><div class="monthly-hbar-fill" style="width:${maxElevatorDays?stats.elevatorIncidentDays[key]/maxElevatorDays*100:0}%"></div></div>
+           <strong>${stats.elevatorIncidentDays[key]}</strong>
+         </div>`).join('')}
+     </div>
+   </div>`;
+ }
+
+ const typeOrder=['FS','PA','EE','Otro'];
+ const typeColors={FS:'#e34b4b',PA:'#e4a62b',EE:'#8755c5',Otro:'#7a858f'};
+ const visibleTypes=typeOrder.filter(type=>stats.incidentTypes[type]>0);
+ const maxType=Math.max(...typeOrder.map(type=>stats.incidentTypes[type]),0);
+ let typesSection='';
+ if(visibleTypes.length){
+   typesSection=`
+   <div class="monthly-section">
+     <div class="monthly-section-title">Tipos de incidente</div>
+     <div class="monthly-vbars">
+       ${visibleTypes.map(type=>`
+         <div class="monthly-vbar-col">
+           <div class="monthly-vbar-count">${stats.incidentTypes[type]}</div>
+           <div class="monthly-vbar-wrap">
+             <div class="monthly-vbar" style="height:${maxType?Math.max(12,stats.incidentTypes[type]/maxType*160):12}px;background:${typeColors[type]}"></div>
+           </div>
+           <div class="monthly-vbar-label">${type}</div>
+         </div>`).join('')}
+     </div>
+   </div>`;
  }
 
  $('reportOutput').innerHTML=`
@@ -345,7 +406,9 @@ function renderMonthlyReport(){
      <div class="monthly-card"><strong>${stats.incidentsTotal}</strong><span>Incidentes totales</span></div>
      <div class="monthly-card"><strong>${stats.incidentDays}</strong><span>Días con incidentes</span></div>
    </div>
-   ${chart}`;
+   ${pieSection}
+   ${elevatorSection}
+   ${typesSection}`;
 }
 function getLocalLegacyData(){try{return JSON.parse(localStorage.getItem(KEY)||'{}')||{}}catch{return {}}}
 function updateMigrationButton(){$('migrateLocal').classList.toggle('show',!!currentUser&&schemaReady&&Object.keys(getLocalLegacyData()).length>0)}
